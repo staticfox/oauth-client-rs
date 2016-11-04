@@ -41,7 +41,7 @@ extern crate url;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
-use std::{error, fmt};
+use std::{error, fmt, str};
 use rand::Rng;
 use rustc_serialize::base64::{self, ToBase64};
 use crypto::hmac::Hmac;
@@ -56,14 +56,18 @@ pub enum Error {
     /// Curl error
     Curl(curl::Error),
     /// Http status
-    HttpStatus(u32),
+    HttpStatus(u32, Vec<u8>),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Curl(ref err) => write!(f, "Curl error: {}", err),
-            Error::HttpStatus(ref resp) => write!(f, "HTTP status error: {}", resp),
+            Error::HttpStatus(ref code, ref resp) =>
+            match str::from_utf8(resp) {
+                Ok(r)  => write!(f, "HTTP status error: {} {}", code, r),
+                Err(_) => write!(f, "HTTP status error: {} {:?}", code, resp),
+            }
         }
     }
 }
@@ -72,14 +76,14 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Curl(ref err) => err.description(),
-            Error::HttpStatus(_) => "HTTP status error",
+            Error::HttpStatus(_, _) => "HTTP status error",
         }
     }
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             Error::Curl(ref err) => Some(err),
-            Error::HttpStatus(_) => None,
+            Error::HttpStatus(_, _) => None,
         }
     }
 }
@@ -288,7 +292,7 @@ pub fn get(uri: &str,
     }
     let code = try!(handle.response_code());
     if code != 200 {
-        return Err(Error::HttpStatus(code));
+        return Err(Error::HttpStatus(code, resp));
     }
     Ok(resp)
 }
@@ -333,7 +337,7 @@ pub fn post(uri: &str,
     }
     let code = try!(handle.response_code());
     if code != 200 {
-        return Err(Error::HttpStatus(code));
+        return Err(Error::HttpStatus(code, resp));
     }
     Ok(resp)
 }
